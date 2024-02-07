@@ -321,16 +321,18 @@ impl TopicCache {
     // Find the first key that is to be retained, i.e. enumerate
     // one past the items to be removed.
     let split_key = match self.min_keep_samples {
-      History::KeepLast { depth } => keys
-        .skip(depth as usize)
-        .enumerate()
-        .skip_while(|(i, insertion_timestamp)| {
-          **insertion_timestamp > remove_before && i + 1 < self.max_keep_samples as usize
-        })
-        .map(|(_, insertion_timestamp)| insertion_timestamp) // un-enumerate
-        .next()
-        .copied(),
       History::KeepAll => keys.nth(self.max_keep_samples as usize).copied(),
+      History::KeepLast { depth } => {
+        let last_index = self.max_keep_samples.saturating_sub(depth) as usize;
+
+        keys
+          .skip(depth as usize)
+          .enumerate()
+          .find_map(|(index, &insertion_timestamp)| {
+            (insertion_timestamp < remove_before || index >= last_index)
+              .then_some(insertion_timestamp)
+          })
+      }
     };
 
     if let Some(split_key) = split_key {
