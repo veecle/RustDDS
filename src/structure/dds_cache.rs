@@ -315,22 +315,20 @@ impl TopicCache {
   /// min_keep_samples.
   /// We must always keep below max_keep_samples.
   pub fn remove_changes_before(&mut self, remove_before: Timestamp) {
+    let History::KeepLast { depth } = self.min_keep_samples else {
+      return;
+    };
+
     // Find the first key that is to be retained, i.e. enumerate
     // one past the items to be removed.
     let split_key = self
       .changes
       .keys()
       .rev() // iterate backwards since the newer values are at the end
+      .skip(depth as usize)
       .enumerate()
       .skip_while(|(i, insertion_timestamp)| {
-        let bigger_than_min_keep = match self.min_keep_samples {
-          History::KeepLast { depth } => i + 1 < depth as usize,
-          History::KeepAll => true,
-        };
-        let is_ttl_valid = **insertion_timestamp > remove_before;
-        let smaller_than_max_keep = i + 1 < self.max_keep_samples as usize;
-
-        (bigger_than_min_keep || is_ttl_valid) && smaller_than_max_keep
+        **insertion_timestamp > remove_before && i + 1 < self.max_keep_samples as usize
       })
       .map(|(_, insertion_timestamp)| insertion_timestamp) // un-enumerate
       .next() // the next element would be the first to retain
