@@ -315,6 +315,8 @@ impl TopicCache {
   /// min_keep_samples.
   /// We must always keep below max_keep_samples.
   pub fn remove_changes_before(&mut self, remove_before: Timestamp) {
+    // TODO: Can we do better without being able to distinguish between instances?
+
     // Iterate backwards since the newer values are at the end.
     let mut keys = self.changes.keys().rev();
 
