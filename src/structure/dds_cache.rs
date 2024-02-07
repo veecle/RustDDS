@@ -315,24 +315,23 @@ impl TopicCache {
   /// min_keep_samples.
   /// We must always keep below max_keep_samples.
   pub fn remove_changes_before(&mut self, remove_before: Timestamp) {
-    let History::KeepLast { depth } = self.min_keep_samples else {
-      return;
-    };
+    // Iterate backwards since the newer values are at the end.
+    let mut keys = self.changes.keys().rev();
 
     // Find the first key that is to be retained, i.e. enumerate
     // one past the items to be removed.
-    let split_key = self
-      .changes
-      .keys()
-      .rev() // iterate backwards since the newer values are at the end
-      .skip(depth as usize)
-      .enumerate()
-      .skip_while(|(i, insertion_timestamp)| {
-        **insertion_timestamp > remove_before && i + 1 < self.max_keep_samples as usize
-      })
-      .map(|(_, insertion_timestamp)| insertion_timestamp) // un-enumerate
-      .next() // the next element would be the first to retain
-      .copied();
+    let split_key = match self.min_keep_samples {
+      History::KeepLast { depth } => keys
+        .skip(depth as usize)
+        .enumerate()
+        .skip_while(|(i, insertion_timestamp)| {
+          **insertion_timestamp > remove_before && i + 1 < self.max_keep_samples as usize
+        })
+        .map(|(_, insertion_timestamp)| insertion_timestamp) // un-enumerate
+        .next()
+        .copied(),
+      History::KeepAll => keys.nth(self.max_keep_samples as usize).copied(),
+    };
 
     if let Some(split_key) = split_key {
       // split_off: Returns everything after the given key, including the key.
@@ -340,9 +339,7 @@ impl TopicCache {
       let to_remove = std::mem::replace(&mut self.changes, to_retain);
 
       // update also SequenceNumber map
-      for r in to_remove.values() {
-        self.remove_sn(r);
-      }
+      to_remove.values().for_each(|r| self.remove_sn(r));
     }
   }
 
