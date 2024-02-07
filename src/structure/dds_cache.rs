@@ -315,39 +315,36 @@ impl TopicCache {
   /// min_keep_samples.
   /// We must always keep below max_keep_samples.
   pub fn remove_changes_before(&mut self, remove_before: Timestamp) {
-    let min_remove_count = max(
-      0,
-      self
-        .changes
-        .len()
-        .wrapping_sub(self.max_keep_samples as usize),
-    );
-
-    let max_remove_count = min_remove_count;
-    // Only observe max cache size
-    // TODO: Can we do better without being able to distinguish between instances?
-
     // Find the first key that is to be retained, i.e. enumerate
     // one past the items to be removed.
-    let split_key = *self
+    let split_key = self
       .changes
       .keys()
-      .take(max_remove_count)
+      .rev() // iterate backwards since the newer values are at the end
       .enumerate()
-      .skip_while(|(i, ts)| {
-        *i < min_remove_count || (**ts < remove_before && *i < max_remove_count)
+      .skip_while(|(i, insertion_timestamp)| {
+        let bigger_than_min_keep = match self.min_keep_samples {
+          History::KeepLast { depth } => i + 1 < depth as usize,
+          History::KeepAll => true,
+        };
+        let is_ttl_valid = **insertion_timestamp > remove_before;
+        let smaller_than_max_keep = i + 1 < self.max_keep_samples as usize;
+
+        (bigger_than_min_keep || is_ttl_valid) && smaller_than_max_keep
       })
-      .map(|(_, ts)| ts) // un-enumerate
+      .map(|(_, insertion_timestamp)| insertion_timestamp) // un-enumerate
       .next() // the next element would be the first to retain
-      .unwrap_or(&Timestamp::ZERO); // if there is no next, then everything from ZERO onwards
+      .copied();
 
-    // split_off: Returns everything after the given key, including the key.
-    let to_retain = self.changes.split_off(&split_key);
-    let to_remove = std::mem::replace(&mut self.changes, to_retain);
+    if let Some(split_key) = split_key {
+      // split_off: Returns everything after the given key, including the key.
+      let to_retain = self.changes.split_off(&split_key);
+      let to_remove = std::mem::replace(&mut self.changes, to_retain);
 
-    // update also SequenceNumber map
-    for r in to_remove.values() {
-      self.remove_sn(r);
+      // update also SequenceNumber map
+      for r in to_remove.values() {
+        self.remove_sn(r);
+      }
     }
   }
 
