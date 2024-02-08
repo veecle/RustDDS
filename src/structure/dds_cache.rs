@@ -325,14 +325,14 @@ impl TopicCache {
     let split_key = match self.min_keep_samples {
       History::KeepAll => keys.nth(self.max_keep_samples as usize).copied(),
       History::KeepLast { depth } => {
-        let first_index = depth.min(self.max_keep_samples) as usize;
-        let last_index = self.max_keep_samples.saturating_sub(depth) as usize;
+        let min_keep_count = depth.min(self.max_keep_samples) as usize;
+        let last_sample_index = self.max_keep_samples.saturating_sub(depth) as usize;
 
         keys
-          .skip(first_index)
+          .skip(min_keep_count)
           .enumerate()
           .find_map(|(index, &insertion_timestamp)| {
-            (insertion_timestamp < remove_before || index >= last_index)
+            (insertion_timestamp < remove_before || index >= last_sample_index)
               .then_some(insertion_timestamp)
           })
       }
